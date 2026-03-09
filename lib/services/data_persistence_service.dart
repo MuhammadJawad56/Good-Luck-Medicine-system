@@ -19,33 +19,52 @@ class DataPersistenceService {
 
   // Save Medicines
   Future<void> saveMedicines(List<Medicine> medicines) async {
-    final prefs = await SharedPreferences.getInstance();
-    final medicinesJson = medicines.map((m) => {
-      'id': m.id,
-      'name': m.name,
-      'batchNumber': m.batchNumber,
-      'quantity': m.quantity,
-      'purchasingCost': m.purchasingCost,
-      'averageSellingCost': m.averageSellingCost,
-    }).toList();
-    await prefs.setString(_medicinesKey, jsonEncode(medicinesJson));
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final medicinesJson = medicines.map((m) => {
+        'id': m.id,
+        'name': m.name,
+        'batchNumber': m.batchNumber,
+        'quantity': m.quantity,
+        'purchasingCost': m.purchasingCost,
+        'averageSellingCost': m.averageSellingCost,
+      }).toList();
+      final jsonString = jsonEncode(medicinesJson);
+      final success = await prefs.setString(_medicinesKey, jsonString);
+      print('SharedPreferences save result: $success');
+      print('Saved ${medicines.length} medicines, JSON length: ${jsonString.length}');
+    } catch (e) {
+      print('Error in saveMedicines: $e');
+      rethrow;
+    }
   }
 
   // Load Medicines
   Future<List<Medicine>> loadMedicines() async {
-    final prefs = await SharedPreferences.getInstance();
-    final medicinesJson = prefs.getString(_medicinesKey);
-    if (medicinesJson == null) return [];
-    
-    final List<dynamic> decoded = jsonDecode(medicinesJson);
-    return decoded.map((m) => Medicine(
-      id: m['id'],
-      name: m['name'],
-      batchNumber: m['batchNumber'],
-      quantity: m['quantity'],
-      purchasingCost: (m['purchasingCost'] as num).toDouble(),
-      averageSellingCost: (m['averageSellingCost'] as num).toDouble(),
-    )).toList();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final medicinesJson = prefs.getString(_medicinesKey);
+      print('Loaded medicines JSON: ${medicinesJson != null ? medicinesJson.length : 0} characters');
+      if (medicinesJson == null || medicinesJson.isEmpty) {
+        print('No medicines found in storage');
+        return [];
+      }
+      
+      final List<dynamic> decoded = jsonDecode(medicinesJson);
+      final medicines = decoded.map((m) => Medicine(
+        id: m['id'],
+        name: m['name'],
+        batchNumber: m['batchNumber'],
+        quantity: m['quantity'],
+        purchasingCost: (m['purchasingCost'] as num).toDouble(),
+        averageSellingCost: (m['averageSellingCost'] as num).toDouble(),
+      )).toList();
+      print('Decoded ${medicines.length} medicines from JSON');
+      return medicines;
+    } catch (e) {
+      print('Error in loadMedicines: $e');
+      return [];
+    }
   }
 
   // Save Employees

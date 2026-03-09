@@ -34,25 +34,44 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final medicines = await _dataService.loadMedicines();
-    setState(() {
-      _medicines.clear();
-      _medicines.addAll(medicines);
-      _inventoryService.setMedicines(_medicines);
-      _isLoading = false;
-    });
+    try {
+      final medicines = await _dataService.loadMedicines();
+      print('Loaded ${medicines.length} medicines from storage');
+      setState(() {
+        _medicines.clear();
+        _medicines.addAll(medicines);
+        _inventoryService.setMedicines(_medicines);
+        _isLoading = false;
+      });
+      print('UI updated with ${_medicines.length} medicines');
+    } catch (e) {
+      print('Error loading medicines: $e');
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _saveData() async {
-    await _dataService.saveMedicines(_medicines);
+    try {
+      // Save from inventory service to ensure we have the latest data
+      print('Saving ${_inventoryService.medicines.length} medicines to storage');
+      await _dataService.saveMedicines(_inventoryService.medicines);
+      print('Medicines saved successfully');
+    } catch (e) {
+      print('Error saving medicines: $e');
+      rethrow;
+    }
   }
 
   void _onInventoryServiceChanged() {
     // Sync local state with inventory service
-    setState(() {
-      _medicines.clear();
-      _medicines.addAll(_inventoryService.medicines);
-    });
+    // This is called automatically when inventory service changes
+    if (mounted) {
+      setState(() {
+        _medicines.clear();
+        _medicines.addAll(_inventoryService.medicines);
+        print('_onInventoryServiceChanged: Updated UI with ${_medicines.length} medicines');
+      });
+    }
   }
 
   @override
@@ -234,13 +253,48 @@ class _InventoryPageState extends State<InventoryPage> {
                       purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
                       averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
                     );
+                    // Add to local state first
                     setState(() {
                       _medicines.add(newMedicine);
-                      _inventoryService.addMedicine(newMedicine);
+                      print('Added to local _medicines: ${_medicines.length} medicines');
                     });
+                    
+                    // Then add to inventory service (this will notify other listeners)
+                    _inventoryService.addMedicine(newMedicine);
+                    print('Added to inventory service: ${_inventoryService.medicines.length} medicines');
+                    
+                    // Save to persistent storage
                     await _saveData();
+                    print('Data saved, current _medicines count: ${_medicines.length}');
+                    
+                    // Ensure UI is updated one more time
+                    if (mounted) {
+                      setState(() {
+                        // Verify sync
+                        if (_medicines.length != _inventoryService.medicines.length) {
+                          _medicines.clear();
+                          _medicines.addAll(_inventoryService.medicines);
+                          print('Re-synced: ${_medicines.length} medicines');
+                        }
+                        print('Final state before closing dialog: ${_medicines.length} medicines');
+                      });
+                    }
+                    
                     Navigator.pop(context);
                     _showUpdateNotification('Medicine added successfully! Batch: $finalBatchNumber');
+                    
+                    // Final UI update after dialog closes to ensure it's visible
+                    if (mounted) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          setState(() {
+                            _medicines.clear();
+                            _medicines.addAll(_inventoryService.medicines);
+                            print('Post-frame update: ${_medicines.length} medicines in UI');
+                          });
+                        }
+                      });
+                    }
                   }
                 }
               }
