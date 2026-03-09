@@ -1901,6 +1901,45 @@ class _BillsPageState extends State<BillsPage> {
     );
   }
 
+  void _deleteBill(Bill bill) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.red),
+            SizedBox(width: 12),
+            Text('Delete Bill'),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to delete bill ${bill.billNumber}?\n\nThis action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              setState(() {
+                _bills.remove(bill);
+              });
+              await _saveData();
+              Navigator.pop(context);
+              _showNotification('Bill deleted successfully');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showNotification(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
