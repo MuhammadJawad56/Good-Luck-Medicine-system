@@ -69,7 +69,7 @@ class SalariesPage extends StatelessWidget {
                   Expanded(
                     child: _SummaryCard(
                       title: 'Monthly Payroll',
-                      value: '₹0',
+                      value: 'PKR 0',
                       icon: Icons.account_balance_wallet,
                       color: Colors.blue,
                     ),

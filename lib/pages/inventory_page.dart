@@ -1,10 +1,324 @@
 import 'package:flutter/material.dart';
+import 'dart:math';
+import '../models/medicine.dart';
 
-class InventoryPage extends StatelessWidget {
+class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
 
   @override
+  State<InventoryPage> createState() => _InventoryPageState();
+}
+
+class _InventoryPageState extends State<InventoryPage> {
+  final List<Medicine> _medicines = [];
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // Filter medicines by search query only - medicines with zero quantity remain in list
+  List<Medicine> get _filteredMedicines {
+    if (_searchController.text.isEmpty) {
+      return _medicines; // Return all medicines, including those with zero quantity
+    }
+    final query = _searchController.text.toLowerCase();
+    return _medicines.where((medicine) {
+      return medicine.name.toLowerCase().contains(query) ||
+          medicine.batchNumber.toLowerCase().contains(query);
+      // Note: Medicines with zero quantity are NOT filtered out - they remain visible
+    }).toList();
+  }
+
+  void _showAddMedicineDialog({Medicine? existingMedicine}) {
+    final nameController = TextEditingController(text: existingMedicine?.name ?? '');
+    final batchController = TextEditingController(text: existingMedicine?.batchNumber ?? '');
+    final quantityController = TextEditingController(text: existingMedicine?.quantity.toString() ?? '');
+    final purchasingCostController = TextEditingController(text: existingMedicine?.purchasingCost.toString() ?? '');
+    final sellingCostController = TextEditingController(text: existingMedicine?.averageSellingCost.toString() ?? '');
+
+    final isUpdate = existingMedicine != null;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(isUpdate ? 'Update Medicine' : 'Add New Medicine'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Medicine Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: batchController,
+                decoration: const InputDecoration(
+                  labelText: 'Batch Number (Optional)',
+                  border: OutlineInputBorder(),
+                  hintText: 'Leave empty to auto-assign',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: quantityController,
+                decoration: const InputDecoration(
+                  labelText: 'Quantity',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: purchasingCostController,
+                decoration: const InputDecoration(
+                  labelText: 'Purchasing Cost (PKR)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: sellingCostController,
+                decoration: const InputDecoration(
+                  labelText: 'Average Selling Cost (PKR)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nameController.text.isNotEmpty &&
+                  quantityController.text.isNotEmpty &&
+                  purchasingCostController.text.isNotEmpty &&
+                  sellingCostController.text.isNotEmpty) {
+                setState(() {
+                  // Determine batch number
+                  String finalBatchNumber = batchController.text.trim();
+                  
+                  if (isUpdate) {
+                    // Update existing medicine
+                    final index = _medicines.indexWhere((m) => m.id == existingMedicine.id);
+                    if (index != -1) {
+                      // If batch is empty, keep the existing batch number
+                      if (finalBatchNumber.isEmpty) {
+                        finalBatchNumber = existingMedicine.batchNumber;
+                      }
+                      _medicines[index] = Medicine(
+                        id: existingMedicine.id,
+                        name: nameController.text,
+                        batchNumber: finalBatchNumber,
+                        quantity: int.tryParse(quantityController.text) ?? 0,
+                        purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
+                        averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
+                      );
+                      Navigator.pop(context);
+                      _showUpdateNotification('Medicine updated successfully!');
+                    }
+                  } else {
+                    // Check for duplicate medicine by name only
+                    Medicine? duplicateMedicine;
+                    
+                    for (var medicine in _medicines) {
+                      if (medicine.name.toLowerCase() == nameController.text.toLowerCase()) {
+                        duplicateMedicine = medicine;
+                        break;
+                      }
+                    }
+
+                    if (duplicateMedicine != null) {
+                      // If batch number is empty, use the existing batch number
+                      if (finalBatchNumber.isEmpty) {
+                        finalBatchNumber = duplicateMedicine.batchNumber;
+                      }
+                      
+                      // Automatically update existing medicine - ADD quantity instead of replacing
+                      final index = _medicines.indexWhere((m) => m.id == duplicateMedicine!.id);
+                      if (index != -1) {
+                        final newQuantity = int.tryParse(quantityController.text) ?? 0;
+                        final oldQuantity = duplicateMedicine.quantity;
+                        final totalQuantity = oldQuantity + newQuantity;
+                        
+                        // Update with new costs and add quantity
+                        _medicines[index] = Medicine(
+                          id: duplicateMedicine.id,
+                          name: nameController.text,
+                          batchNumber: finalBatchNumber,
+                          quantity: totalQuantity, // Add new quantity to old quantity
+                          purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
+                          averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
+                        );
+                        Navigator.pop(context);
+                        _showUpdateNotification(
+                          'Medicine updated! Added $newQuantity to existing stock. Total quantity: $totalQuantity',
+                        );
+                      }
+                    } else {
+                      // No duplicate found - auto-generate batch number if empty
+                      if (finalBatchNumber.isEmpty) {
+                        finalBatchNumber = _generateBatchNumber();
+                      }
+                      
+                      // Add new medicine
+                      _medicines.add(Medicine(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: nameController.text,
+                        batchNumber: finalBatchNumber,
+                        quantity: int.tryParse(quantityController.text) ?? 0,
+                        purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
+                        averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
+                      ));
+                      Navigator.pop(context);
+                      _showUpdateNotification('Medicine added successfully! Batch: $finalBatchNumber');
+                    }
+                  }
+                });
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1565C0),
+              foregroundColor: Colors.white,
+            ),
+            child: Text(isUpdate ? 'Update' : 'Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _generateBatchNumber() {
+    // Generate a unique batch number: 1 letter + 6 digits (max 7 characters)
+    // Start with a random alphabet (A-Z)
+    final random = Random();
+    final alphabet = String.fromCharCode(65 + random.nextInt(26)); // A-Z
+    // Generate 6 random digits
+    final digits = random.nextInt(999999).toString().padLeft(6, '0');
+    return '$alphabet$digits'; // Format: A123456 (7 characters total)
+  }
+
+  void _showUpdateConfirmationDialog(
+    Medicine existingMedicine,
+    String newName,
+    String newBatch,
+    int newQuantity,
+    double newPurchasingCost,
+    double newSellingCost,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Color(0xFF1565C0)),
+            SizedBox(width: 8),
+            Text('Medicine Already Exists'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'A medicine with the same name or batch number already exists:',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1565C0).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Name: ${existingMedicine.name}'),
+                  Text('Batch: ${existingMedicine.batchNumber}'),
+                  Text('Current Quantity: ${existingMedicine.quantity}'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Do you want to update the existing entry?',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                final index = _medicines.indexWhere((m) => m.id == existingMedicine.id);
+                if (index != -1) {
+                  _medicines[index] = Medicine(
+                    id: existingMedicine.id,
+                    name: newName,
+                    batchNumber: newBatch,
+                    quantity: newQuantity,
+                    purchasingCost: newPurchasingCost,
+                    averageSellingCost: newSellingCost,
+                  );
+                }
+              });
+              Navigator.pop(context);
+              _showUpdateNotification('Medicine updated successfully!');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1565C0),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showUpdateNotification(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final lowStockCount = _medicines.where((m) => m.quantity < 10).length;
+    final outOfStockCount = _medicines.where((m) => m.quantity == 0).length;
+    final totalProfit = _medicines.fold<double>(
+      0.0,
+      (sum, medicine) => sum + medicine.totalProfit,
+    );
+
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
@@ -13,7 +327,7 @@ class InventoryPage extends StatelessWidget {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        backgroundColor: const Color(0xFF1976D2),
+        backgroundColor: const Color(0xFF1565C0),
         foregroundColor: Colors.white,
       ),
       body: SafeArea(
@@ -27,8 +341,10 @@ class InventoryPage extends StatelessWidget {
                 children: [
                   Expanded(
                     child: TextField(
+                      controller: _searchController,
+                      onChanged: (_) => setState(() {}),
                       decoration: InputDecoration(
-                        hintText: 'Search products...',
+                        hintText: 'Search by name or batch number...',
                         prefixIcon: const Icon(Icons.search),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -40,13 +356,11 @@ class InventoryPage extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      // TODO: Add new product
-                    },
+                    onPressed: _showAddMedicineDialog,
                     icon: const Icon(Icons.add),
-                    label: const Text('Add Product'),
+                    label: const Text('Add Medicine'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1976D2),
+                      backgroundColor: const Color(0xFF1565C0),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     ),
@@ -59,17 +373,17 @@ class InventoryPage extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _SummaryCard(
-                      title: 'Total Products',
-                      value: '0',
+                      title: 'Total Medicines',
+                      value: '${_medicines.length}',
                       icon: Icons.inventory_2,
-                      color: const Color(0xFF1976D2),
+                      color: const Color(0xFF1565C0),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _SummaryCard(
                       title: 'Low Stock',
-                      value: '0',
+                      value: '$lowStockCount',
                       icon: Icons.warning,
                       color: Colors.orange,
                     ),
@@ -78,55 +392,206 @@ class InventoryPage extends StatelessWidget {
                   Expanded(
                     child: _SummaryCard(
                       title: 'Out of Stock',
-                      value: '0',
+                      value: '$outOfStockCount',
                       icon: Icons.error,
                       color: Colors.red,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Total Profit',
+                      value: 'PKR ${totalProfit.toStringAsFixed(2)}',
+                      icon: Icons.trending_up,
+                      color: Colors.green,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              // Products List Header
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+              // Table Header
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1565C0).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 child: Row(
                   children: [
-                    Expanded(flex: 2, child: _TableHeader('Product Name')),
-                    Expanded(child: _TableHeader('Stock')),
-                    Expanded(child: _TableHeader('Price')),
+                    Expanded(flex: 2, child: _TableHeader('Medicine Name')),
+                    Expanded(child: _TableHeader('Batch No.')),
+                    Expanded(child: _TableHeader('Quantity')),
+                    Expanded(child: _TableHeader('Purchase Cost')),
+                    Expanded(child: _TableHeader('Selling Cost')),
+                    Expanded(child: _TableHeader('Profit')),
                     Expanded(child: _TableHeader('Actions')),
                   ],
                 ),
               ),
-              const Divider(),
-              // Products List (Empty State)
+              const SizedBox(height: 8),
+              // Medicines List
               Expanded(
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.inventory_2_outlined,
-                        size: 64,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No products found',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                child: _filteredMedicines.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.inventory_2_outlined,
+                              size: 64,
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                             ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Click "Add Product" to get started',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                            const SizedBox(height: 16),
+                            Text(
+                              _medicines.isEmpty
+                                  ? 'No medicines found'
+                                  : 'No medicines match your search',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                  ),
                             ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _medicines.isEmpty
+                                  ? 'Click "Add Medicine" to get started'
+                                  : 'Try a different search term',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                  ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _filteredMedicines.length,
+                        itemBuilder: (context, index) {
+                          final medicine = _filteredMedicines[index];
+                          final isLowStock = medicine.quantity < 10;
+                          final isOutOfStock = medicine.quantity == 0;
+                          
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            elevation: 1,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isOutOfStock
+                                      ? Colors.red.withOpacity(0.3)
+                                      : isLowStock
+                                          ? Colors.orange.withOpacity(0.3)
+                                          : Colors.transparent,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      medicine.name,
+                                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: Theme.of(context).colorScheme.onSurface,
+                                          ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      medicine.batchNumber,
+                                      style: Theme.of(context).textTheme.bodyMedium,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Text(
+                                          '${medicine.quantity}',
+                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                fontWeight: FontWeight.w600,
+                                                color: isOutOfStock
+                                                    ? Colors.red
+                                                    : isLowStock
+                                                        ? Colors.orange
+                                                        : Theme.of(context).colorScheme.onSurface,
+                                              ),
+                                        ),
+                                        if (isLowStock || isOutOfStock)
+                                          Padding(
+                                            padding: const EdgeInsets.only(left: 4),
+                                            child: Icon(
+                                              isOutOfStock ? Icons.error : Icons.warning,
+                                              size: 16,
+                                              color: isOutOfStock ? Colors.red : Colors.orange,
+                                            ),
+                                          ),
+                                        if (isOutOfStock)
+                                          Padding(
+                                            padding: const EdgeInsets.only(left: 4),
+                                            child: Text(
+                                              '(Out of Stock)',
+                                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                    color: Colors.red,
+                                                    fontStyle: FontStyle.italic,
+                                                  ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      'PKR ${medicine.purchasingCost.toStringAsFixed(2)}',
+                                      style: Theme.of(context).textTheme.bodyMedium,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      'PKR ${medicine.averageSellingCost.toStringAsFixed(2)}',
+                                      style: Theme.of(context).textTheme.bodyMedium,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      'PKR ${medicine.profit.toStringAsFixed(2)}',
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                            color: medicine.profit >= 0
+                                                ? Colors.green
+                                                : Colors.red,
+                                          ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.edit, size: 20),
+                                          color: const Color(0xFF1565C0),
+                                          onPressed: () {
+                                            _showAddMedicineDialog(existingMedicine: medicine);
+                                          },
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete, size: 20),
+                                          color: Colors.red,
+                                          onPressed: () {
+                                            setState(() {
+                                              _medicines.remove(medicine);
+                                            });
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                    ],
-                  ),
-                ),
               ),
             ],
           ),
@@ -196,7 +661,7 @@ class _TableHeader extends StatelessWidget {
       text,
       style: Theme.of(context).textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.onSurface,
+            color: const Color(0xFF1565C0),
           ),
     );
   }

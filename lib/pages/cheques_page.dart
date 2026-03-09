@@ -78,7 +78,7 @@ class ChequesPage extends StatelessWidget {
                   Expanded(
                     child: _SummaryCard(
                       title: 'Total Amount',
-                      value: '₹0',
+                      value: 'PKR 0',
                       icon: Icons.account_balance,
                       color: Colors.green,
                     ),
