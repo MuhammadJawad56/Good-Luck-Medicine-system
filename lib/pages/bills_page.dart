@@ -76,7 +76,22 @@ class _BillsPageState extends State<BillsPage> {
     final customerNameController = TextEditingController();
     final customerContactController = TextEditingController();
     final List<BillItem> billItems = [];
-    final availableMedicines = _inventoryService.medicines.where((m) => m.quantity > 0).toList();
+    final availableMedicines = _inventoryService.medicines; // Use all medicines, not just in stock
+    
+    // Get unique customer names from previous bills
+    final Set<String> previousCustomerNames = {};
+    final Map<String, String> customerNameToContact = {}; // Map customer name to their contact
+    
+    for (var bill in _bills) {
+      if (bill.customerName != null && bill.customerName!.trim().isNotEmpty) {
+        previousCustomerNames.add(bill.customerName!.trim());
+        // Store the most recent contact for each customer
+        if (bill.customerContact != null && bill.customerContact!.trim().isNotEmpty) {
+          customerNameToContact[bill.customerName!.trim()] = bill.customerContact!.trim();
+        }
+      }
+    }
+    final previousCustomers = previousCustomerNames.toList()..sort();
     
     // Controllers for adding new item
     Medicine? selectedMedicine;
@@ -100,14 +115,86 @@ class _BillsPageState extends State<BillsPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextField(
-                        controller: customerNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Customer Name (Optional)',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.person),
-                        ),
+                      child: Autocomplete<String>(
+                        optionsBuilder: (TextEditingValue textEditingValue) {
+                          if (textEditingValue.text.isEmpty) {
+                            return previousCustomers;
+                          }
+                          return previousCustomers.where((name) {
+                            return name.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                          });
+                        },
+                        displayStringForOption: (String option) => option,
+                        onSelected: (String selection) {
+                          setDialogState(() {
+                            customerNameController.text = selection;
+                            // Auto-fill contact if available
+                            if (customerNameToContact.containsKey(selection)) {
+                              customerContactController.text = customerNameToContact[selection]!;
+                            }
+                          });
+                        },
+                        fieldViewBuilder: (
+                          BuildContext context,
+                          TextEditingController controller,
+                          FocusNode focusNode,
+                          VoidCallback onFieldSubmitted,
+                        ) {
+                          // Sync the autocomplete controller with customerNameController
+                          controller.addListener(() {
+                            customerNameController.text = controller.text;
+                            setDialogState(() {}); // Update UI to show/hide history button
+                          });
+                          
+                          return TextField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            decoration: InputDecoration(
+                              labelText: 'Customer Name (Optional)',
+                              hintText: previousCustomers.isEmpty 
+                                  ? 'Enter customer name...'
+                                  : 'Select or type customer name...',
+                              border: const OutlineInputBorder(),
+                              prefixIcon: const Icon(Icons.person),
+                              suffixIcon: previousCustomers.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.arrow_drop_down),
+                                      tooltip: 'Show previous customers',
+                                      onPressed: () {
+                                        focusNode.requestFocus();
+                                      },
+                                    )
+                                  : null,
+                            ),
+                            onSubmitted: (String value) {
+                              onFieldSubmitted();
+                            },
+                            onChanged: (value) {
+                              setDialogState(() {}); // Update UI to show/hide history button
+                            },
+                          );
+                        },
                       ),
+                    ),
+                    // History button - show when customer name is entered
+                    StatefulBuilder(
+                      builder: (context, setHistoryState) {
+                        // Check if customer name exists in previous bills
+                        final hasHistory = previousCustomers.contains(customerNameController.text.trim());
+                        return hasHistory
+                            ? IconButton(
+                                icon: const Icon(Icons.history, color: Colors.blue),
+                                tooltip: 'View Customer Bill History',
+                                onPressed: () {
+                                  _showCustomerBillHistory(
+                                    context,
+                                    customerNameController.text.trim(),
+                                    customerContactController.text.trim(),
+                                  );
+                                },
+                              )
+                            : const SizedBox.shrink();
+                      },
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1439,6 +1526,320 @@ class _BillsPageState extends State<BillsPage> {
     }
   }
 
+  void _showCustomerBillHistory(BuildContext context, String customerName, String customerContact) {
+    // Get all bills for this customer (by name or contact)
+    final customerBills = _bills.where((bill) {
+      final nameMatch = bill.customerName != null && 
+          bill.customerName!.toLowerCase().trim() == customerName.toLowerCase().trim();
+      final contactMatch = customerContact.isNotEmpty &&
+          bill.customerContact != null &&
+          bill.customerContact!.toLowerCase().trim() == customerContact.toLowerCase().trim();
+      return nameMatch || contactMatch;
+    }).toList();
+
+    if (customerBills.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No bills found for $customerName'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Group bills by date
+    final Map<String, List<Bill>> billsByDate = {};
+    for (var bill in customerBills) {
+      final dateKey = '${bill.date.year}-${bill.date.month.toString().padLeft(2, '0')}-${bill.date.day.toString().padLeft(2, '0')}';
+      billsByDate.putIfAbsent(dateKey, () => []).add(bill);
+    }
+
+    // Sort dates descending (newest first)
+    final sortedDates = billsByDate.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.history, color: Colors.blue),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bill History',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  Text(
+                    customerName,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: MediaQuery.of(context).size.width * 0.7,
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: sortedDates.isEmpty
+              ? const Center(child: Text('No bills found'))
+              : ListView.builder(
+                  itemCount: sortedDates.length,
+                  itemBuilder: (context, dateIndex) {
+                    final dateKey = sortedDates[dateIndex];
+                    final billsForDate = billsByDate[dateKey]!;
+                    final date = DateTime.parse('$dateKey 00:00:00');
+                    
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      elevation: 2,
+                      child: ExpansionTile(
+                        leading: const Icon(Icons.calendar_today, color: Colors.blue),
+                        title: Text(
+                          '${date.day}/${date.month}/${date.year}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        subtitle: Text('${billsForDate.length} bill${billsForDate.length > 1 ? 's' : ''}'),
+                        children: billsForDate.map((bill) {
+                          return ListTile(
+                            leading: const Icon(Icons.receipt, color: Color(0xFFAD1457)),
+                            title: Text(
+                              bill.billNumber,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${bill.items.length} items'),
+                                Text(
+                                  'Total: PKR ${bill.totalAmount.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                                Text(
+                                  'Time: ${bill.date.hour.toString().padLeft(2, '0')}:${bill.date.minute.toString().padLeft(2, '0')}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.visibility, color: Colors.blue),
+                                  tooltip: 'View Bill',
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _showBillDetailsDialog(bill);
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.print, color: Colors.green),
+                                  tooltip: 'Print Bill',
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _generateBillPDF(bill);
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBillDetailsDialog(Bill bill) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.receipt, color: Color(0xFFAD1457)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    bill.billNumber,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '${bill.date.day}/${bill.date.month}/${bill.date.year} ${bill.date.hour.toString().padLeft(2, '0')}:${bill.date.minute.toString().padLeft(2, '0')}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: MediaQuery.of(context).size.width * 0.6,
+          height: MediaQuery.of(context).size.height * 0.6,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (bill.customerName != null || bill.customerContact != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Customer Details:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (bill.customerName != null)
+                          Text('Name: ${bill.customerName}'),
+                        if (bill.customerContact != null)
+                          Text('Contact: ${bill.customerContact}'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                const Text(
+                  'Items:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...bill.items.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final item = entry.value;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: const Color(0xFFAD1457).withOpacity(0.2),
+                        child: Text(
+                          '${index + 1}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFAD1457),
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        item.medicineName,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text('Batch: ${item.batchNumber}'),
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'Qty: ${item.quantity}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            'PKR ${item.total.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                const Divider(thickness: 2),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Total Amount:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        'PKR ${bill.totalAmount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              _generateBillPDF(bill);
+            },
+            icon: const Icon(Icons.print),
+            label: const Text('Print Bill'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showPrintBillDialog() {
     if (_bills.isEmpty) {
       _showNotification('No bills available to print', isError: true);
@@ -1675,7 +2076,7 @@ class _BillsPageState extends State<BillsPage> {
                                   if (bill.customerContact != null)
                                     Text('Contact: ${bill.customerContact}'),
                                   Text(
-                                    '${bill.items.length} items • ${bill.date.day}/${bill.date.month}/${bill.date.year}',
+                                    '${bill.items.length} items',
                                   ),
                                 ],
                               ),
@@ -1690,11 +2091,22 @@ class _BillsPageState extends State<BillsPage> {
                                         ),
                                   ),
                                   const SizedBox(width: 8),
+                                  Text(
+                                    '${bill.date.day}/${bill.date.month}/${bill.date.year}',
+                                    style: Theme.of(context).textTheme.bodyMedium,
+                                  ),
+                                  const SizedBox(width: 8),
                                   IconButton(
                                     icon: const Icon(Icons.print, size: 20),
                                     color: Colors.blue,
                                     onPressed: () => _generateBillPDF(bill),
                                     tooltip: 'Print Bill',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, size: 20),
+                                    color: Colors.red,
+                                    onPressed: () => _deleteBill(bill),
+                                    tooltip: 'Delete Bill',
                                   ),
                                 ],
                               ),
