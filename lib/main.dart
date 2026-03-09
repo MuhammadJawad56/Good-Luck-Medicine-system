@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'home_page.dart';
+import 'widgets/cheque_notification_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,7 +67,14 @@ class GoodluckMedicineApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      home: const HomePage(),
+      home: const ChequeNotificationOverlay(
+        child: HomePage(),
+      ),
+      routes: {
+        '/cheques': (context) => const ChequeNotificationOverlay(
+          child: HomePage(),
+        ),
+      },
     );
   }
 }

@@ -6,6 +6,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:open_filex/open_filex.dart';
 import '../models/medicine.dart';
+import '../widgets/cheque_notification_overlay.dart';
+import '../utils/pdf_header.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -328,47 +330,12 @@ class _InventoryPageState extends State<InventoryPage> {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // Header
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        'GOODLUCK MEDICINE COMPANY',
-                        style: pw.TextStyle(
-                          fontSize: 20,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                      pw.SizedBox(height: 4),
-                      pw.Text(
-                        'Order Form',
-                        style: pw.TextStyle(
-                          fontSize: 16,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text(
-                        'Date: ${now.day}/${now.month}/${now.year}',
-                        style: const pw.TextStyle(fontSize: 12),
-                      ),
-                      pw.SizedBox(height: 4),
-                      pw.Text(
-                        'Time: ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
-                        style: const pw.TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ],
+              // Header with logo, address, and contact info
+              PdfHeaderHelper.buildSimpleHeader(
+                subtitle: 'Order Form',
+                rightSideInfo: 'Date: ${now.day}/${now.month}/${now.year}\nTime: ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
               ),
-              pw.SizedBox(height: 30),
+              pw.SizedBox(height: 20),
               
               // Table Header
               pw.Table(

@@ -4,6 +4,7 @@ import 'pages/inventory_page.dart';
 import 'pages/salaries_page.dart';
 import 'pages/cheques_page.dart';
 import 'pages/bills_page.dart';
+import 'widgets/cheque_notification_overlay.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -91,7 +92,9 @@ class HomePage extends StatelessWidget {
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (context) => const InventoryPage(),
+                              builder: (context) => const ChequeNotificationOverlay(
+                                child: InventoryPage(),
+                              ),
                             ),
                           );
                         },
@@ -105,7 +108,9 @@ class HomePage extends StatelessWidget {
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (context) => const SalariesPage(),
+                              builder: (context) => const ChequeNotificationOverlay(
+                                child: SalariesPage(),
+                              ),
                             ),
                           );
                         },
@@ -119,7 +124,9 @@ class HomePage extends StatelessWidget {
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (context) => const ChequesPage(),
+                              builder: (context) => const ChequeNotificationOverlay(
+                                child: ChequesPage(),
+                              ),
                             ),
                           );
                         },
@@ -133,7 +140,9 @@ class HomePage extends StatelessWidget {
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (context) => const BillsPage(),
+                              builder: (context) => const ChequeNotificationOverlay(
+                                child: BillsPage(),
+                              ),
                             ),
                           );
                         },

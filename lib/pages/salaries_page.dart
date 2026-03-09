@@ -4,6 +4,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:open_filex/open_filex.dart';
 import '../models/employee.dart';
+import '../widgets/cheque_notification_overlay.dart';
+import '../utils/pdf_header.dart';
 
 class SalariesPage extends StatefulWidget {
   const SalariesPage({super.key});
@@ -308,47 +310,12 @@ class _SalariesPageState extends State<SalariesPage> {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Header
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(
-                          'GOODLUCK MEDICINE COMPANY',
-                          style: pw.TextStyle(
-                            fontSize: 20,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                        pw.SizedBox(height: 4),
-                        pw.Text(
-                          'Employee Monthly Withdrawal Statement',
-                          style: pw.TextStyle(
-                            fontSize: 16,
-                            fontWeight: pw.FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Text(
-                          'Pay Cycle: ${_cycleStartDate.day}/${_cycleStartDate.month}/${_cycleStartDate.year} - ${_cycleEndDate.day}/${_cycleEndDate.month}/${_cycleEndDate.year}',
-                          style: const pw.TextStyle(fontSize: 10),
-                        ),
-                        pw.SizedBox(height: 4),
-                        pw.Text(
-                          'Generated: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
-                          style: const pw.TextStyle(fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ],
+                // Header with logo, address, and contact info
+                PdfHeaderHelper.buildSimpleHeader(
+                  subtitle: 'Employee Monthly Withdrawal Statement',
+                  rightSideInfo: 'Pay Cycle: ${_cycleStartDate.day}/${_cycleStartDate.month}/${_cycleStartDate.year} - ${_cycleEndDate.day}/${_cycleEndDate.month}/${_cycleEndDate.year}\nGenerated: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
                 ),
-                pw.SizedBox(height: 30),
+                pw.SizedBox(height: 20),
                 
                 // Employee Info
                 pw.Container(
