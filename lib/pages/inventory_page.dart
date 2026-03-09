@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'dart:io';
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:open_filex/open_filex.dart';
 import '../models/medicine.dart';
 
 class InventoryPage extends StatefulWidget {
@@ -310,9 +315,258 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
+  Future<void> _printOrderForm() async {
+    try {
+      final pdf = pw.Document();
+      final now = DateTime.now();
+    
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Header
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'GOODLUCK MEDICINE COMPANY',
+                        style: pw.TextStyle(
+                          fontSize: 20,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Text(
+                        'Order Form',
+                        style: pw.TextStyle(
+                          fontSize: 16,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Text(
+                        'Date: ${now.day}/${now.month}/${now.year}',
+                        style: const pw.TextStyle(fontSize: 12),
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Text(
+                        'Time: ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+                        style: const pw.TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 30),
+              
+              // Table Header
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey800),
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'S.No',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'Medicine Name',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'Batch Number',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'Quantity',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                          textAlign: pw.TextAlign.center,
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'Amount (PKR)',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                          textAlign: pw.TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Medicine rows
+                  ...List.generate(_medicines.length, (index) {
+                    final medicine = _medicines[index];
+                    return pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            '${index + 1}',
+                            style: const pw.TextStyle(fontSize: 11),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            medicine.name,
+                            style: const pw.TextStyle(fontSize: 11),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            medicine.batchNumber,
+                            style: const pw.TextStyle(fontSize: 11),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            '', // Empty quantity column
+                            style: const pw.TextStyle(fontSize: 11),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            '', // Empty amount column
+                            style: const pw.TextStyle(fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+              pw.SizedBox(height: 30),
+              
+              // Footer
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'Total Items: ${_medicines.length}',
+                        style: const pw.TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Text(
+                        'Signature: _______________',
+                        style: const pw.TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+      // Generate PDF bytes
+      final pdfBytes = await pdf.save();
+      
+      // For Windows desktop, save PDF to Desktop and open with default application
+      if (Platform.isWindows) {
+        // Get Desktop path from environment variable
+        final desktopPath = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
+        final filePath = desktopPath.isNotEmpty 
+            ? '$desktopPath\\Desktop\\Order_Form_${now.day}_${now.month}_${now.year}.pdf'
+            : 'Order_Form_${now.day}_${now.month}_${now.year}.pdf';
+        
+        final file = File(filePath);
+        await file.writeAsBytes(pdfBytes);
+        
+        // Open the PDF with default application (which can print)
+        try {
+          await OpenFilex.open(file.path);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('PDF opened successfully! You can now print it.'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('PDF saved to Desktop. Please open it from: ${file.path}'),
+                backgroundColor: Colors.blue,
+              ),
+            );
+          }
+        }
+      } else {
+        // For other platforms, use sharePdf
+        await Printing.sharePdf(
+          bytes: pdfBytes,
+          filename: 'Order_Form_${now.day}_${now.month}_${now.year}.pdf',
+        );
+      }
+    } catch (e) {
+      // Show error message if printing fails
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error generating PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final lowStockCount = _medicines.where((m) => m.quantity < 10).length;
+    final lowStockCount = _medicines.where((m) => m.quantity > 0 && m.quantity < 10).length;
     final outOfStockCount = _medicines.where((m) => m.quantity == 0).length;
     final totalProfit = _medicines.fold<double>(
       0.0,
@@ -361,6 +615,17 @@ class _InventoryPageState extends State<InventoryPage> {
                     label: const Text('Add Medicine'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF1565C0),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: _printOrderForm,
+                    icon: const Icon(Icons.print),
+                    label: const Text('Order Form'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E7D32),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     ),
@@ -466,7 +731,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         itemCount: _filteredMedicines.length,
                         itemBuilder: (context, index) {
                           final medicine = _filteredMedicines[index];
-                          final isLowStock = medicine.quantity < 10;
+                          final isLowStock = medicine.quantity > 0 && medicine.quantity < 10;
                           final isOutOfStock = medicine.quantity == 0;
                           
                           return Card(
