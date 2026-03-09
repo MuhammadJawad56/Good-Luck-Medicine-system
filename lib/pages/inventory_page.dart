@@ -8,6 +8,8 @@ import 'package:open_filex/open_filex.dart';
 import '../models/medicine.dart';
 import '../widgets/cheque_notification_overlay.dart';
 import '../utils/pdf_header.dart';
+import '../services/inventory_service.dart';
+import '../services/data_persistence_service.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -19,10 +21,44 @@ class InventoryPage extends StatefulWidget {
 class _InventoryPageState extends State<InventoryPage> {
   final List<Medicine> _medicines = [];
   final TextEditingController _searchController = TextEditingController();
+  final InventoryService _inventoryService = InventoryService();
+  final DataPersistenceService _dataService = DataPersistenceService();
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _inventoryService.addListener(_onInventoryServiceChanged);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    final medicines = await _dataService.loadMedicines();
+    setState(() {
+      _medicines.clear();
+      _medicines.addAll(medicines);
+      _inventoryService.setMedicines(_medicines);
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _saveData() async {
+    await _dataService.saveMedicines(_medicines);
+  }
+
+  void _onInventoryServiceChanged() {
+    // Sync local state with inventory service
+    setState(() {
+      _medicines.clear();
+      _medicines.addAll(_inventoryService.medicines);
+    });
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _inventoryService.removeListener(_onInventoryServiceChanged);
     super.dispose();
   }
 
@@ -108,92 +144,105 @@ class _InventoryPageState extends State<InventoryPage> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (nameController.text.isNotEmpty &&
                   quantityController.text.isNotEmpty &&
                   purchasingCostController.text.isNotEmpty &&
                   sellingCostController.text.isNotEmpty) {
-                setState(() {
-                  // Determine batch number
-                  String finalBatchNumber = batchController.text.trim();
+                // Determine batch number
+                String finalBatchNumber = batchController.text.trim();
+                
+                if (isUpdate) {
+                  // Update existing medicine
+                  final index = _medicines.indexWhere((m) => m.id == existingMedicine.id);
+                  if (index != -1) {
+                    // If batch is empty, keep the existing batch number
+                    if (finalBatchNumber.isEmpty) {
+                      finalBatchNumber = existingMedicine.batchNumber;
+                    }
+                    final updatedMedicine = Medicine(
+                      id: existingMedicine.id,
+                      name: nameController.text,
+                      batchNumber: finalBatchNumber,
+                      quantity: int.tryParse(quantityController.text) ?? 0,
+                      purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
+                      averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
+                    );
+                    setState(() {
+                      _medicines[index] = updatedMedicine;
+                      _inventoryService.updateMedicine(existingMedicine.id, updatedMedicine);
+                    });
+                    await _saveData();
+                    Navigator.pop(context);
+                    _showUpdateNotification('Medicine updated successfully!');
+                  }
+                } else {
+                  // Check for duplicate medicine by name only
+                  Medicine? duplicateMedicine;
                   
-                  if (isUpdate) {
-                    // Update existing medicine
-                    final index = _medicines.indexWhere((m) => m.id == existingMedicine.id);
+                  for (var medicine in _medicines) {
+                    if (medicine.name.toLowerCase() == nameController.text.toLowerCase()) {
+                      duplicateMedicine = medicine;
+                      break;
+                    }
+                  }
+
+                  if (duplicateMedicine != null) {
+                    // If batch number is empty, use the existing batch number
+                    if (finalBatchNumber.isEmpty) {
+                      finalBatchNumber = duplicateMedicine.batchNumber;
+                    }
+                    
+                    // Automatically update existing medicine - ADD quantity instead of replacing
+                    final index = _medicines.indexWhere((m) => m.id == duplicateMedicine!.id);
                     if (index != -1) {
-                      // If batch is empty, keep the existing batch number
-                      if (finalBatchNumber.isEmpty) {
-                        finalBatchNumber = existingMedicine.batchNumber;
-                      }
-                      _medicines[index] = Medicine(
-                        id: existingMedicine.id,
+                      final newQuantity = int.tryParse(quantityController.text) ?? 0;
+                      final oldQuantity = duplicateMedicine.quantity;
+                      final totalQuantity = oldQuantity + newQuantity;
+                      
+                      // Update with new costs and add quantity
+                      final updatedMedicine = Medicine(
+                        id: duplicateMedicine.id,
                         name: nameController.text,
                         batchNumber: finalBatchNumber,
-                        quantity: int.tryParse(quantityController.text) ?? 0,
+                        quantity: totalQuantity, // Add new quantity to old quantity
                         purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
                         averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
                       );
+                      setState(() {
+                        _medicines[index] = updatedMedicine;
+                        _inventoryService.updateMedicine(duplicateMedicine!.id, updatedMedicine);
+                      });
+                      await _saveData();
                       Navigator.pop(context);
-                      _showUpdateNotification('Medicine updated successfully!');
+                      _showUpdateNotification(
+                        'Medicine updated! Added $newQuantity to existing stock. Total quantity: $totalQuantity',
+                      );
                     }
                   } else {
-                    // Check for duplicate medicine by name only
-                    Medicine? duplicateMedicine;
+                    // No duplicate found - auto-generate batch number if empty
+                    if (finalBatchNumber.isEmpty) {
+                      finalBatchNumber = _generateBatchNumber();
+                    }
                     
-                    for (var medicine in _medicines) {
-                      if (medicine.name.toLowerCase() == nameController.text.toLowerCase()) {
-                        duplicateMedicine = medicine;
-                        break;
-                      }
-                    }
-
-                    if (duplicateMedicine != null) {
-                      // If batch number is empty, use the existing batch number
-                      if (finalBatchNumber.isEmpty) {
-                        finalBatchNumber = duplicateMedicine.batchNumber;
-                      }
-                      
-                      // Automatically update existing medicine - ADD quantity instead of replacing
-                      final index = _medicines.indexWhere((m) => m.id == duplicateMedicine!.id);
-                      if (index != -1) {
-                        final newQuantity = int.tryParse(quantityController.text) ?? 0;
-                        final oldQuantity = duplicateMedicine.quantity;
-                        final totalQuantity = oldQuantity + newQuantity;
-                        
-                        // Update with new costs and add quantity
-                        _medicines[index] = Medicine(
-                          id: duplicateMedicine.id,
-                          name: nameController.text,
-                          batchNumber: finalBatchNumber,
-                          quantity: totalQuantity, // Add new quantity to old quantity
-                          purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
-                          averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
-                        );
-                        Navigator.pop(context);
-                        _showUpdateNotification(
-                          'Medicine updated! Added $newQuantity to existing stock. Total quantity: $totalQuantity',
-                        );
-                      }
-                    } else {
-                      // No duplicate found - auto-generate batch number if empty
-                      if (finalBatchNumber.isEmpty) {
-                        finalBatchNumber = _generateBatchNumber();
-                      }
-                      
-                      // Add new medicine
-                      _medicines.add(Medicine(
-                        id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        name: nameController.text,
-                        batchNumber: finalBatchNumber,
-                        quantity: int.tryParse(quantityController.text) ?? 0,
-                        purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
-                        averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
-                      ));
-                      Navigator.pop(context);
-                      _showUpdateNotification('Medicine added successfully! Batch: $finalBatchNumber');
-                    }
+                    // Add new medicine
+                    final newMedicine = Medicine(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      name: nameController.text,
+                      batchNumber: finalBatchNumber,
+                      quantity: int.tryParse(quantityController.text) ?? 0,
+                      purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
+                      averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
+                    );
+                    setState(() {
+                      _medicines.add(newMedicine);
+                      _inventoryService.addMedicine(newMedicine);
+                    });
+                    await _saveData();
+                    Navigator.pop(context);
+                    _showUpdateNotification('Medicine added successfully! Batch: $finalBatchNumber');
                   }
-                });
+                }
               }
             },
             style: ElevatedButton.styleFrom(
@@ -294,6 +343,35 @@ class _InventoryPageState extends State<InventoryPage> {
               foregroundColor: Colors.white,
             ),
             child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteMedicine(Medicine medicine) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Medicine'),
+        content: Text('Are you sure you want to delete ${medicine.name}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              setState(() {
+                _medicines.remove(medicine);
+                _inventoryService.setMedicines(_medicines);
+              });
+              await _saveData();
+              Navigator.pop(context);
+              _showUpdateNotification('Medicine deleted successfully!');
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -809,11 +887,7 @@ class _InventoryPageState extends State<InventoryPage> {
                                         IconButton(
                                           icon: const Icon(Icons.delete, size: 20),
                                           color: Colors.red,
-                                          onPressed: () {
-                                            setState(() {
-                                              _medicines.remove(medicine);
-                                            });
-                                          },
+                                          onPressed: () => _deleteMedicine(medicine),
                                         ),
                                       ],
                                     ),

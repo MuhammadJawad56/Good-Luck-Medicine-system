@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/cheque.dart';
 import '../services/cheque_notification_service.dart';
+import '../services/data_persistence_service.dart';
 
 class ChequesPage extends StatefulWidget {
   const ChequesPage({super.key});
@@ -13,10 +14,28 @@ class _ChequesPageState extends State<ChequesPage> {
   final List<Cheque> _cheques = [];
   final TextEditingController _searchController = TextEditingController();
   final ChequeNotificationService _notificationService = ChequeNotificationService();
+  final DataPersistenceService _dataService = DataPersistenceService();
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    final cheques = await _dataService.loadCheques();
+    setState(() {
+      _cheques.clear();
+      _cheques.addAll(cheques);
+      _updateNotificationService();
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _saveData() async {
+    await _dataService.saveCheques(_cheques);
     _updateNotificationService();
   }
 
@@ -157,7 +176,7 @@ class _ChequesPageState extends State<ChequesPage> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 if (chequeNumberController.text.isNotEmpty &&
                     vendorNameController.text.isNotEmpty &&
                     bankController.text.isNotEmpty &&
@@ -184,8 +203,8 @@ class _ChequesPageState extends State<ChequesPage> {
                         _cheques[index].amount = double.tryParse(amountController.text) ?? 0.0;
                       }
                     }
-                    _updateNotificationService();
                   });
+                  await _saveData();
                   Navigator.pop(context);
                   _showNotification(chequeToEdit == null ? 'Cheque added successfully!' : 'Cheque updated successfully!');
                 }
@@ -220,11 +239,11 @@ class _ChequesPageState extends State<ChequesPage> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               setState(() {
                 _cheques.remove(cheque);
-                _updateNotificationService();
               });
+              await _saveData();
               Navigator.pop(context);
               _showNotification('Cheque deleted successfully!');
             },

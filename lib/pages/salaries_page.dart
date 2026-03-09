@@ -6,6 +6,7 @@ import 'package:open_filex/open_filex.dart';
 import '../models/employee.dart';
 import '../widgets/cheque_notification_overlay.dart';
 import '../utils/pdf_header.dart';
+import '../services/data_persistence_service.dart';
 
 class SalariesPage extends StatefulWidget {
   const SalariesPage({super.key});
@@ -17,6 +18,8 @@ class SalariesPage extends StatefulWidget {
 class _SalariesPageState extends State<SalariesPage> {
   final List<Employee> _employees = [];
   final TextEditingController _searchController = TextEditingController();
+  final DataPersistenceService _dataService = DataPersistenceService();
+  bool _isLoading = true;
   
   // Pay cycle settings (default: 1st to 1st)
   DateTime _cycleStartDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -26,6 +29,35 @@ class _SalariesPageState extends State<SalariesPage> {
   void initState() {
     super.initState();
     _updateCycleDates();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    final employees = await _dataService.loadEmployees();
+    final withdrawals = await _dataService.loadWithdrawals();
+    
+    // Attach withdrawals to employees
+    for (var employee in employees) {
+      final employeeWithdrawals = withdrawals[employee.id] ?? [];
+      employee.withdrawals.clear();
+      employee.withdrawals.addAll(employeeWithdrawals);
+    }
+    
+    setState(() {
+      _employees.clear();
+      _employees.addAll(employees);
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _saveData() async {
+    await _dataService.saveEmployees(_employees);
+    final withdrawalsMap = <String, List<Withdrawal>>{};
+    for (var employee in _employees) {
+      withdrawalsMap[employee.id] = employee.withdrawals;
+    }
+    await _dataService.saveWithdrawals(withdrawalsMap);
   }
 
   void _updateCycleDates() {
@@ -97,7 +129,7 @@ class _SalariesPageState extends State<SalariesPage> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (nameController.text.isNotEmpty &&
                   positionController.text.isNotEmpty &&
                   salaryController.text.isNotEmpty) {
@@ -118,6 +150,7 @@ class _SalariesPageState extends State<SalariesPage> {
                     }
                   }
                 });
+                await _saveData();
                 Navigator.pop(context);
                 _showNotification(employeeToEdit == null ? 'Employee added successfully!' : 'Employee updated successfully!');
               }
@@ -185,7 +218,7 @@ class _SalariesPageState extends State<SalariesPage> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 if (amountController.text.isNotEmpty) {
                   setState(() {
                     employee.withdrawals.add(Withdrawal(
@@ -194,6 +227,7 @@ class _SalariesPageState extends State<SalariesPage> {
                       date: selectedDate,
                     ));
                   });
+                  await _saveData();
                   Navigator.pop(context);
                   _showNotification('Withdrawal added successfully!');
                 }
@@ -573,10 +607,11 @@ class _SalariesPageState extends State<SalariesPage> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               setState(() {
                 _employees.remove(employee);
               });
+              await _saveData();
               Navigator.pop(context);
               _showNotification('Employee deleted successfully!');
             },
