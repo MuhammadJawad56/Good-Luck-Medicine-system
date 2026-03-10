@@ -8,10 +8,10 @@ class InventoryService {
   List<Medicine> _medicines = [];
   final List<VoidCallback> _listeners = [];
 
-  List<Medicine> get medicines => _medicines;
+  List<Medicine> get medicines => List.unmodifiable(_medicines);
 
   void setMedicines(List<Medicine> medicines) {
-    _medicines = medicines;
+    _medicines = List<Medicine>.from(medicines);
     _notifyListeners();
   }
 
@@ -26,6 +26,11 @@ class InventoryService {
       _medicines[index] = updatedMedicine;
       _notifyListeners();
     }
+  }
+
+  void removeMedicine(String id) {
+    _medicines.removeWhere((m) => m.id == id);
+    _notifyListeners();
   }
 
   Medicine? getMedicineById(String id) {

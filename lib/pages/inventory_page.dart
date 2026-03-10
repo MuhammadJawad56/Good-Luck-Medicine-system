@@ -37,10 +37,10 @@ class _InventoryPageState extends State<InventoryPage> {
     try {
       final medicines = await _dataService.loadMedicines();
       print('Loaded ${medicines.length} medicines from storage');
+      _inventoryService.setMedicines(medicines);
       setState(() {
         _medicines.clear();
         _medicines.addAll(medicines);
-        _inventoryService.setMedicines(_medicines);
         _isLoading = false;
       });
       print('UI updated with ${_medicines.length} medicines');
@@ -187,11 +187,9 @@ class _InventoryPageState extends State<InventoryPage> {
                       purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
                       averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
                     );
-                    setState(() {
-                      _medicines[index] = updatedMedicine;
-                      _inventoryService.updateMedicine(existingMedicine.id, updatedMedicine);
-                    });
+                    _inventoryService.updateMedicine(existingMedicine.id, updatedMedicine);
                     await _saveData();
+                    if (!mounted) return;
                     Navigator.pop(context);
                     _showUpdateNotification('Medicine updated successfully!');
                   }
@@ -228,11 +226,9 @@ class _InventoryPageState extends State<InventoryPage> {
                         purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
                         averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
                       );
-                      setState(() {
-                        _medicines[index] = updatedMedicine;
-                        _inventoryService.updateMedicine(duplicateMedicine!.id, updatedMedicine);
-                      });
+                      _inventoryService.updateMedicine(duplicateMedicine!.id, updatedMedicine);
                       await _saveData();
+                      if (!mounted) return;
                       Navigator.pop(context);
                       _showUpdateNotification(
                         'Medicine updated! Added $newQuantity to existing stock. Total quantity: $totalQuantity',
@@ -253,48 +249,12 @@ class _InventoryPageState extends State<InventoryPage> {
                       purchasingCost: double.tryParse(purchasingCostController.text) ?? 0.0,
                       averageSellingCost: double.tryParse(sellingCostController.text) ?? 0.0,
                     );
-                    // Add to local state first
-                    setState(() {
-                      _medicines.add(newMedicine);
-                      print('Added to local _medicines: ${_medicines.length} medicines');
-                    });
-                    
-                    // Then add to inventory service (this will notify other listeners)
                     _inventoryService.addMedicine(newMedicine);
                     print('Added to inventory service: ${_inventoryService.medicines.length} medicines');
-                    
-                    // Save to persistent storage
                     await _saveData();
-                    print('Data saved, current _medicines count: ${_medicines.length}');
-                    
-                    // Ensure UI is updated one more time
-                    if (mounted) {
-                      setState(() {
-                        // Verify sync
-                        if (_medicines.length != _inventoryService.medicines.length) {
-                          _medicines.clear();
-                          _medicines.addAll(_inventoryService.medicines);
-                          print('Re-synced: ${_medicines.length} medicines');
-                        }
-                        print('Final state before closing dialog: ${_medicines.length} medicines');
-                      });
-                    }
-                    
+                    if (!mounted) return;
                     Navigator.pop(context);
                     _showUpdateNotification('Medicine added successfully! Batch: $finalBatchNumber');
-                    
-                    // Final UI update after dialog closes to ensure it's visible
-                    if (mounted) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          setState(() {
-                            _medicines.clear();
-                            _medicines.addAll(_inventoryService.medicines);
-                            print('Post-frame update: ${_medicines.length} medicines in UI');
-                          });
-                        }
-                      });
-                    }
                   }
                 }
               }
@@ -416,11 +376,9 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
           ElevatedButton(
             onPressed: () async {
-              setState(() {
-                _medicines.remove(medicine);
-                _inventoryService.setMedicines(_medicines);
-              });
+              _inventoryService.removeMedicine(medicine.id);
               await _saveData();
+              if (!mounted) return;
               Navigator.pop(context);
               _showUpdateNotification('Medicine deleted successfully!');
             },
