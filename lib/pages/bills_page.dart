@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:open_filex/open_filex.dart';
+import 'package:printing/printing.dart';
 import '../models/bill.dart';
 import '../models/medicine.dart';
 import '../services/inventory_service.dart';
@@ -1257,7 +1257,6 @@ class _BillsPageState extends State<BillsPage> {
   Future<void> _generateBillPDF(Bill bill) async {
     try {
       final pdf = pw.Document();
-      final now = DateTime.now();
 
       pdf.addPage(
         pw.Page(
@@ -1498,27 +1497,18 @@ class _BillsPageState extends State<BillsPage> {
         ),
       );
 
-      // Save and open PDF
       final pdfBytes = await pdf.save();
-      final desktopPath = Platform.environment['USERPROFILE'] ?? '';
-      final fileName = '${bill.billNumber}_${bill.date.day}_${bill.date.month}_${bill.date.year}.pdf';
-      final filePath = desktopPath.isNotEmpty 
-          ? '$desktopPath\\Desktop\\$fileName'
-          : fileName;
-      
-      final file = File(filePath);
-      await file.writeAsBytes(pdfBytes);
-      
-      try {
-        await OpenFilex.open(file.path);
-        if (mounted) {
-          _showNotification('Bill PDF opened successfully!');
-        }
-      } catch (e) {
-        if (mounted) {
-          _showNotification('Bill PDF saved to Desktop: $fileName');
-        }
-      }
+      if (!mounted) return;
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => _BillPdfPreviewPage(
+            title: 'Bill Preview',
+            fileName: '${bill.billNumber}_${bill.date.day}_${bill.date.month}_${bill.date.year}.pdf',
+            pdfBytes: pdfBytes,
+          ),
+        ),
+      );
     } catch (e) {
       if (mounted) {
         _showNotification('Error generating PDF: $e', isError: true);
@@ -2157,6 +2147,39 @@ class _BillsPageState extends State<BillsPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _BillPdfPreviewPage extends StatelessWidget {
+  final String title;
+  final String fileName;
+  final Uint8List pdfBytes;
+
+  const _BillPdfPreviewPage({
+    required this.title,
+    required this.fileName,
+    required this.pdfBytes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: PdfPreview(
+        build: (format) async => pdfBytes,
+        pdfFileName: fileName,
+        canChangePageFormat: false,
+        canChangeOrientation: false,
+        allowSharing: true,
+        allowPrinting: true,
       ),
     );
   }

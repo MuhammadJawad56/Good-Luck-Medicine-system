@@ -4,6 +4,7 @@ import 'pages/inventory_page.dart';
 import 'pages/salaries_page.dart';
 import 'pages/cheques_page.dart';
 import 'pages/bills_page.dart';
+import 'pages/warranty_page.dart';
 import 'widgets/cheque_notification_overlay.dart';
 
 class HomePage extends StatelessWidget {
@@ -80,9 +81,12 @@ class HomePage extends StatelessWidget {
               child: Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    runAlignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 20,
+                    runSpacing: 20,
                     children: [
                       _ModuleCard(
                         title: 'Inventory',
@@ -99,7 +103,6 @@ class HomePage extends StatelessWidget {
                           );
                         },
                       ),
-                      const SizedBox(width: 20),
                       _ModuleCard(
                         title: 'Salaries',
                         icon: Icons.account_balance_wallet,
@@ -115,7 +118,6 @@ class HomePage extends StatelessWidget {
                           );
                         },
                       ),
-                      const SizedBox(width: 20),
                       _ModuleCard(
                         title: 'Cheques',
                         icon: Icons.receipt_long,
@@ -131,7 +133,6 @@ class HomePage extends StatelessWidget {
                           );
                         },
                       ),
-                      const SizedBox(width: 20),
                       _ModuleCard(
                         title: 'Bills',
                         icon: Icons.receipt,
@@ -142,6 +143,21 @@ class HomePage extends StatelessWidget {
                             MaterialPageRoute(
                               builder: (context) => const ChequeNotificationOverlay(
                                 child: BillsPage(),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      _ModuleCard(
+                        title: 'Warranty',
+                        icon: Icons.verified_user,
+                        color: const Color(0xFF6A1B9A),
+                        description: 'Warranty records and claim tracking',
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const ChequeNotificationOverlay(
+                                child: WarrantyPage(),
                               ),
                             ),
                           );
