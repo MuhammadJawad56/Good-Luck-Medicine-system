@@ -283,7 +283,8 @@ class _WarrantyEntryPageState extends State<_WarrantyEntryPage> {
 
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
+        // Use half of A4 height (approx. A5) for compact print
+        pageFormat: PdfPageFormat.a5,
         margin: const pw.EdgeInsets.all(32),
         build: (context) => [
           PdfHeaderHelper.buildSimpleHeader(

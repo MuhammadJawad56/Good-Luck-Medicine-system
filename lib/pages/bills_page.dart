@@ -1298,7 +1298,8 @@ class _BillsPageState extends State<BillsPage> {
 
       pdf.addPage(
         pw.Page(
-          pageFormat: PdfPageFormat.a4,
+          // Use half of A4 height (approx. A5) for compact bills
+          pageFormat: PdfPageFormat.a5,
           margin: const pw.EdgeInsets.all(40),
           build: (pw.Context context) {
             return pw.Column(

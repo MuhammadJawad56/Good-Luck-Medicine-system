@@ -338,7 +338,8 @@ class _SalariesPageState extends State<SalariesPage> {
 
       pdf.addPage(
         pw.Page(
-          pageFormat: PdfPageFormat.a4,
+          // Use half of A4 height (approx. A5) for compact print
+          pageFormat: PdfPageFormat.a5,
           margin: const pw.EdgeInsets.all(40),
           build: (pw.Context context) {
             return pw.Column(
