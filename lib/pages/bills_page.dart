@@ -77,6 +77,7 @@ class _BillsPageState extends State<BillsPage> {
     final customerContactController = TextEditingController();
     final List<BillItem> billItems = [];
     bool isTestBill = false;
+    bool showBatchOnBill = true;
     final availableMedicines = _inventoryService.medicines; // Use all medicines, not just in stock
     
     // Get unique customer names from previous bills
@@ -112,27 +113,71 @@ class _BillsPageState extends State<BillsPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                // Bill Type Selector
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: DropdownButton<String>(
-                    value: isTestBill ? 'Test Bill' : 'Customer Bill',
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'Customer Bill',
-                        child: Text('Customer Bill'),
+                // Bill Type and Batch Visibility Controls
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Bill Type Selector
+                      Row(
+                        children: [
+                          const Icon(Icons.receipt_long, color: Color(0xFF1565C0)),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Bill Type:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          DropdownButton<String>(
+                            value: isTestBill ? 'Test Bill' : 'Customer Bill',
+                            underline: const SizedBox.shrink(),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'Customer Bill',
+                                child: Text('Customer Bill'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Test Bill',
+                                child: Text('Test Bill'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value == null) return;
+                              setDialogState(() {
+                                isTestBill = (value == 'Test Bill');
+                              });
+                            },
+                          ),
+                        ],
                       ),
-                      DropdownMenuItem(
-                        value: 'Test Bill',
-                        child: Text('Test Bill'),
+                      // Batch column toggle
+                      Row(
+                        children: [
+                          const Text(
+                            'Show Batch No.',
+                            style: TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(width: 4),
+                          Switch(
+                            value: showBatchOnBill,
+                            activeColor: const Color(0xFFAD1457),
+                            onChanged: (value) {
+                              setDialogState(() {
+                                showBatchOnBill = value;
+                              });
+                            },
+                          ),
+                        ],
                       ),
                     ],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setDialogState(() {
-                        isTestBill = (value == 'Test Bill');
-                      });
-                    },
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -742,6 +787,7 @@ class _BillsPageState extends State<BillsPage> {
                         items: List.from(billItems),
                         totalAmount: Bill.calculateTotal(billItems),
                         isTestBill: isTestBill,
+                        showBatchColumn: showBatchOnBill,
                       );
                       _generateBillPDF(tempBill);
                     },
@@ -767,6 +813,7 @@ class _BillsPageState extends State<BillsPage> {
                         items: List.from(billItems),
                         totalAmount: Bill.calculateTotal(billItems),
                         isTestBill: isTestBill,
+                        showBatchColumn: showBatchOnBill,
                       );
 
                       // Update inventory - reduce stock
@@ -1396,16 +1443,17 @@ class _BillsPageState extends State<BillsPage> {
                             ),
                           ),
                         ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            'Batch',
-                            style: pw.TextStyle(
-                              fontWeight: pw.FontWeight.bold,
-                              fontSize: 11,
+                        if (bill.showBatchColumn)
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(8),
+                            child: pw.Text(
+                              'Batch',
+                              style: pw.TextStyle(
+                                fontWeight: pw.FontWeight.bold,
+                                fontSize: 11,
+                              ),
                             ),
                           ),
-                        ),
                         pw.Padding(
                           padding: const pw.EdgeInsets.all(8),
                           child: pw.Text(
@@ -1459,13 +1507,14 @@ class _BillsPageState extends State<BillsPage> {
                               style: const pw.TextStyle(fontSize: 10),
                             ),
                           ),
-                          pw.Padding(
-                            padding: const pw.EdgeInsets.all(8),
-                            child: pw.Text(
-                              item.batchNumber,
-                              style: const pw.TextStyle(fontSize: 10),
+                          if (bill.showBatchColumn)
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.all(8),
+                              child: pw.Text(
+                                item.batchNumber,
+                                style: const pw.TextStyle(fontSize: 10),
+                              ),
                             ),
-                          ),
                           pw.Padding(
                             padding: const pw.EdgeInsets.all(8),
                             child: pw.Text(

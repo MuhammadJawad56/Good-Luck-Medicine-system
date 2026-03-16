@@ -7,6 +7,7 @@ class Bill {
   final List<BillItem> items;
   final double totalAmount;
   final bool isTestBill;
+  final bool showBatchColumn;
 
   Bill({
     required this.id,
@@ -17,6 +18,7 @@ class Bill {
     required this.items,
     required this.totalAmount,
     this.isTestBill = false,
+    this.showBatchColumn = true,
   });
 
   // Calculate total from items
