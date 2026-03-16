@@ -427,7 +427,7 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
               pw.SizedBox(height: 20),
               
-              // Table Header
+              // Table Header (without Batch Number and Amount columns)
               pw.Table(
                 border: pw.TableBorder.all(color: PdfColors.grey800),
                 children: [
@@ -457,28 +457,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       pw.Padding(
                         padding: const pw.EdgeInsets.all(8),
                         child: pw.Text(
-                          'Batch Number',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(
                           'Quantity',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                          textAlign: pw.TextAlign.center,
-                        ),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(
-                          'Amount (PKR)',
                           style: pw.TextStyle(
                             fontWeight: pw.FontWeight.bold,
                             fontSize: 12,
@@ -510,21 +489,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         pw.Padding(
                           padding: const pw.EdgeInsets.all(8),
                           child: pw.Text(
-                            medicine.batchNumber,
-                            style: const pw.TextStyle(fontSize: 11),
-                          ),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            '', // Empty quantity column
-                            style: const pw.TextStyle(fontSize: 11),
-                          ),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            '', // Empty amount column
+                            '', // Quantity left empty to be filled manually
                             style: const pw.TextStyle(fontSize: 11),
                           ),
                         ),
