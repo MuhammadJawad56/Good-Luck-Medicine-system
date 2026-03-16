@@ -76,6 +76,7 @@ class _BillsPageState extends State<BillsPage> {
     final customerNameController = TextEditingController();
     final customerContactController = TextEditingController();
     final List<BillItem> billItems = [];
+    bool isTestBill = false;
     final availableMedicines = _inventoryService.medicines; // Use all medicines, not just in stock
     
     // Get unique customer names from previous bills
@@ -111,6 +112,30 @@ class _BillsPageState extends State<BillsPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                // Bill Type Selector
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: DropdownButton<String>(
+                    value: isTestBill ? 'Test Bill' : 'Customer Bill',
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Customer Bill',
+                        child: Text('Customer Bill'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Test Bill',
+                        child: Text('Test Bill'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setDialogState(() {
+                        isTestBill = (value == 'Test Bill');
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
                 // Customer Info (Optional)
                 Row(
                   children: [
@@ -261,7 +286,8 @@ class _BillsPageState extends State<BillsPage> {
                                   selectedMedicine = medicine;
                                   // Auto-fill price from inventory average selling cost
                                   priceController.text = medicine.averageSellingCost.toStringAsFixed(2);
-                                  quantityController.text = '1'; // Default quantity to 1
+                                  // Do NOT auto-fill quantity from inventory; user must enter it manually
+                                  quantityController.clear();
                                 });
                               },
                               fieldViewBuilder: (
@@ -357,8 +383,14 @@ class _BillsPageState extends State<BillsPage> {
                             icon: const Icon(Icons.add_circle, size: 36),
                             color: const Color(0xFFAD1457),
                             onPressed: () async {
-                                    // Get medicine name from search controller
-                                    final medicineName = medicineSearchController?.text.trim() ?? '';
+                                    // Get medicine name for lookup/billing
+                                    // If a medicine was selected from inventory, always use its actual name.
+                                    // Otherwise, fall back to the raw text (and strip any extra info like "(Stock: ..)")
+                                    final rawSearchText = medicineSearchController?.text.trim() ?? '';
+                                    final medicineName = selectedMedicine?.name ??
+                                        (rawSearchText.contains('(')
+                                            ? rawSearchText.split('(').first.trim()
+                                            : rawSearchText);
                                     final quantity = int.tryParse(quantityController.text) ?? 0;
                                     final price = double.tryParse(priceController.text) ?? 0.0;
 
@@ -392,11 +424,13 @@ class _BillsPageState extends State<BillsPage> {
                                     }
 
                                     // Check if medicine exists in inventory
-                                    Medicine? medicineInInventory = _inventoryService.getMedicineByName(medicineName);
-                                    
-                                    // If medicine was selected from autocomplete, use it
-                                    if (selectedMedicine != null && selectedMedicine!.name.toLowerCase() == medicineName.toLowerCase()) {
+                                    Medicine? medicineInInventory;
+
+                                    // If medicine was selected from autocomplete, trust that it came from inventory
+                                    if (selectedMedicine != null) {
                                       medicineInInventory = selectedMedicine;
+                                    } else {
+                                      medicineInInventory = _inventoryService.getMedicineByName(medicineName);
                                     }
                                     
                                     if (medicineInInventory == null) {
@@ -502,7 +536,8 @@ class _BillsPageState extends State<BillsPage> {
                                       billItems[existingIndex] = BillItem(
                                         medicineId: existing.medicineId,
                                         medicineName: existing.medicineName,
-                                        batchNumber: existing.batchNumber,
+                                        // Do not auto-use inventory batch number for bill items
+                                        batchNumber: '',
                                         quantity: newQuantity,
                                         unitPrice: price,
                                         total: newQuantity * price,
@@ -512,7 +547,8 @@ class _BillsPageState extends State<BillsPage> {
                                       billItems.add(BillItem(
                                         medicineId: updatedMedicine.id,
                                         medicineName: updatedMedicine.name,
-                                        batchNumber: updatedMedicine.batchNumber,
+                                        // Do not auto-use inventory batch number for bill items
+                                        batchNumber: '',
                                         quantity: quantity,
                                         unitPrice: price,
                                         total: quantity * price,
@@ -705,6 +741,7 @@ class _BillsPageState extends State<BillsPage> {
                         customerContact: customerContactController.text.isEmpty ? null : customerContactController.text,
                         items: List.from(billItems),
                         totalAmount: Bill.calculateTotal(billItems),
+                        isTestBill: isTestBill,
                       );
                       _generateBillPDF(tempBill);
                     },
@@ -729,6 +766,7 @@ class _BillsPageState extends State<BillsPage> {
                         customerContact: customerContactController.text.isEmpty ? null : customerContactController.text,
                         items: List.from(billItems),
                         totalAmount: Bill.calculateTotal(billItems),
+                        isTestBill: isTestBill,
                       );
 
                       // Update inventory - reduce stock
@@ -1267,11 +1305,22 @@ class _BillsPageState extends State<BillsPage> {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 // Header with logo, address, and contact info
-                PdfHeaderHelper.buildSimpleHeader(
-                  subtitle: 'Sales Bill',
-                  rightSideInfo: 'Bill No: ${bill.billNumber}\nDate: ${bill.date.day}/${bill.date.month}/${bill.date.year}\nTime: ${bill.date.hour.toString().padLeft(2, '0')}:${bill.date.minute.toString().padLeft(2, '0')}',
-                ),
-                pw.SizedBox(height: 20),
+                if (!bill.isTestBill) ...[
+                  PdfHeaderHelper.buildSimpleHeader(
+                    subtitle: 'Sales Bill',
+                    rightSideInfo: 'Bill No: ${bill.billNumber}\nDate: ${bill.date.day}/${bill.date.month}/${bill.date.year}\nTime: ${bill.date.hour.toString().padLeft(2, '0')}:${bill.date.minute.toString().padLeft(2, '0')}',
+                  ),
+                  pw.SizedBox(height: 20),
+                ] else ...[
+                  pw.Text(
+                    'TEST BILL',
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 10),
+                ],
 
                 // Customer Info (if available)
                 if (bill.customerName != null || bill.customerContact != null)

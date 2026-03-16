@@ -6,6 +6,7 @@ class Bill {
   String? customerContact;
   final List<BillItem> items;
   final double totalAmount;
+  final bool isTestBill;
 
   Bill({
     required this.id,
@@ -15,6 +16,7 @@ class Bill {
     this.customerContact,
     required this.items,
     required this.totalAmount,
+    this.isTestBill = false,
   });
 
   // Calculate total from items
