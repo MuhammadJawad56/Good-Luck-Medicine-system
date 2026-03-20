@@ -175,6 +175,10 @@ class DataPersistenceService {
         'quantity': item.quantity,
         'unitPrice': item.unitPrice,
         'total': item.total,
+        // Extra aliases for backward/forward compatibility (in case older versions used different keys).
+        'price': item.unitPrice,
+        'totalPrice': item.total,
+        'qty': item.quantity,
       }).toList(),
       'totalAmount': b.totalAmount,
     }).toList();
@@ -188,24 +192,91 @@ class DataPersistenceService {
     if (billsJson == null) return [];
     
     final List<dynamic> decoded = jsonDecode(billsJson);
+
+    double toDoubleValue(dynamic v) {
+      if (v == null) return 0.0;
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? 0.0;
+      return 0.0;
+    }
+
+    int toIntValue(dynamic v) {
+      if (v == null) return 0;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v) ?? (double.tryParse(v)?.toInt() ?? 0);
+      return 0;
+    }
+
     return decoded.map((b) {
-      final items = (b['items'] as List).map((item) => BillItem(
-        medicineId: item['medicineId'],
-        medicineName: item['medicineName'],
-        batchNumber: item['batchNumber'],
-        quantity: item['quantity'],
-        unitPrice: (item['unitPrice'] as num).toDouble(),
-        total: (item['total'] as num).toDouble(),
-      )).toList();
-      
+      // Support multiple possible key names for old saved bills.
+      final rawItems =
+          b['items'] ?? b['billItems'] ?? b['bill_items'] ?? <dynamic>[];
+
+      List<dynamic> itemsList;
+      if (rawItems is List) {
+        itemsList = rawItems;
+      } else if (rawItems is String) {
+        // Some older schemas might have stored items as a JSON string.
+        final decodedItems = (() {
+          try {
+            final v = jsonDecode(rawItems);
+            return v is List ? v : <dynamic>[];
+          } catch (_) {
+            return <dynamic>[];
+          }
+        })();
+        itemsList = decodedItems;
+      } else {
+        itemsList = <dynamic>[];
+      }
+      final items = itemsList
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .map((item) {
+        final medicineId = (item['medicineId'] ?? item['id'] ?? '').toString();
+        final medicineName = (item['medicineName'] ?? item['name'] ?? '').toString();
+        final batchNumber = (item['batchNumber'] ?? item['batch'] ?? item['batch_no'] ?? '').toString();
+
+        final quantity = toIntValue(item['quantity'] ?? item['qty']);
+        final unitPrice = toDoubleValue(item['unitPrice'] ?? item['price']);
+
+        // Some older schemas may store 'total' as 'totalPrice', or only store unitPrice + quantity.
+        final total = (() {
+          final directTotal = item['total'] ?? item['totalPrice'];
+          final parsedTotal = toDoubleValue(directTotal);
+          if (parsedTotal != 0.0 || quantity == 0) return parsedTotal;
+          return unitPrice * quantity;
+        })();
+
+        return BillItem(
+          medicineId: medicineId,
+          medicineName: medicineName,
+          batchNumber: batchNumber,
+          quantity: quantity,
+          unitPrice: unitPrice,
+          total: total,
+        );
+      }).toList();
+
+      final totalAmount = toDoubleValue(
+        b['totalAmount'] ??
+            b['grandTotal'] ??
+            b['total'] ??
+            0,
+      );
+
       return Bill(
-        id: b['id'],
-        billNumber: b['billNumber'],
-        date: DateTime.parse(b['date']),
-        customerName: b['customerName'],
-        customerContact: b['customerContact'],
+        id: (b['id'] ?? '').toString(),
+        billNumber: (b['billNumber'] ?? '').toString(),
+        date: DateTime.parse(b['date'] ?? DateTime.now().toIso8601String()),
+        customerName: b['customerName']?.toString(),
+        customerContact: b['customerContact']?.toString(),
         items: items,
-        totalAmount: (b['totalAmount'] as num).toDouble(),
+        // If totalAmount is missing/broken but items exist, compute it.
+        totalAmount: totalAmount == 0.0 && items.isNotEmpty
+            ? Bill.calculateTotal(items)
+            : totalAmount,
       );
     }).toList();
   }

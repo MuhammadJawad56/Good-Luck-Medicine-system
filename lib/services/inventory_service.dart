@@ -43,8 +43,9 @@ class InventoryService {
 
   Medicine? getMedicineByName(String name) {
     try {
+      final normalized = name.trim().toLowerCase();
       return _medicines.firstWhere(
-        (m) => m.name.toLowerCase() == name.toLowerCase(),
+        (m) => m.name.trim().toLowerCase() == normalized,
       );
     } catch (e) {
       return null;

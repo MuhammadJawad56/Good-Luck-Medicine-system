@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:open_filex/open_filex.dart';
 import '../models/bill.dart';
 import '../models/medicine.dart';
 import '../services/inventory_service.dart';
@@ -34,6 +36,11 @@ class _BillsPageState extends State<BillsPage> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+    // Ensure inventory service has medicines loaded from storage,
+    // so billing autocomplete can show existing items.
+    final medicines = await _dataService.loadMedicines();
+    _inventoryService.setMedicines(medicines);
+
     final bills = await _dataService.loadBills();
     final counter = await _dataService.loadBillCounter();
     setState(() {
@@ -1346,8 +1353,8 @@ class _BillsPageState extends State<BillsPage> {
       pdf.addPage(
         pw.Page(
           // Use half of A4 height (approx. A5) for compact bills
-          pageFormat: PdfPageFormat.a5,
-          margin: const pw.EdgeInsets.all(40),
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(30),
           build: (pw.Context context) {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1611,6 +1618,303 @@ class _BillsPageState extends State<BillsPage> {
     } catch (e) {
       if (mounted) {
         _showNotification('Error generating PDF: $e', isError: true);
+      }
+    }
+  }
+
+  Future<Uint8List> _generateBillPdfBytes(Bill bill) async {
+    final pdf = pw.Document();
+    pdf.addPage(
+      pw.Page(
+        // Use half of A4 height (approx. A5) for compact bills
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(30),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Header with logo, address, and contact info
+              if (!bill.isTestBill) ...[
+                PdfHeaderHelper.buildSimpleHeader(
+                  subtitle: 'Sales Bill',
+                  rightSideInfo:
+                      'Bill No: ${bill.billNumber}\nDate: ${bill.date.day}/${bill.date.month}/${bill.date.year}\nTime: ${bill.date.hour.toString().padLeft(2, '0')}:${bill.date.minute.toString().padLeft(2, '0')}',
+                ),
+                pw.SizedBox(height: 20),
+              ] else ...[
+                pw.Text(
+                  'TEST BILL',
+                  style: pw.TextStyle(
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 10),
+              ],
+
+              // Customer Info (if available)
+              if (bill.customerName != null || bill.customerContact != null)
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(12),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey800),
+                    borderRadius: pw.BorderRadius.circular(8),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'Customer Details',
+                        style: pw.TextStyle(
+                          fontSize: 12,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      if (bill.customerName != null) ...[
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          'Name: ${bill.customerName}',
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                      ],
+                      if (bill.customerContact != null) ...[
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          'Contact: ${bill.customerContact}',
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              if (bill.customerName != null || bill.customerContact != null)
+                pw.SizedBox(height: 16),
+
+              // Items Table
+              pw.Text(
+                'Items',
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey800),
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'S.No',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'Medicine Name',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      if (bill.showBatchColumn)
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            'Batch',
+                            style: pw.TextStyle(
+                              fontWeight: pw.FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'Qty',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                          textAlign: pw.TextAlign.center,
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'Price',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                          textAlign: pw.TextAlign.right,
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8),
+                        child: pw.Text(
+                          'Total',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                          textAlign: pw.TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                  ...List.generate(bill.items.length, (index) {
+                    final item = bill.items[index];
+                    return pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            '${index + 1}',
+                            style: const pw.TextStyle(fontSize: 10),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            item.medicineName,
+                            style: const pw.TextStyle(fontSize: 10),
+                          ),
+                        ),
+                        if (bill.showBatchColumn)
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(8),
+                            child: pw.Text(
+                              item.batchNumber,
+                              style: const pw.TextStyle(fontSize: 10),
+                            ),
+                          ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            '${item.quantity}',
+                            style: const pw.TextStyle(fontSize: 10),
+                            textAlign: pw.TextAlign.center,
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            item.unitPrice.toStringAsFixed(2),
+                            style: const pw.TextStyle(fontSize: 10),
+                            textAlign: pw.TextAlign.right,
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(
+                            item.total.toStringAsFixed(2),
+                            style: const pw.TextStyle(fontSize: 10),
+                            textAlign: pw.TextAlign.right,
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Total
+              pw.Container(
+                padding: const pw.EdgeInsets.all(16),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey800),
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Total Amount:',
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.Text(
+                      'PKR ${bill.totalAmount.toStringAsFixed(2)}',
+                      style: pw.TextStyle(
+                        fontSize: 16,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.green,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 30),
+
+              // Footer
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    'Total Items: ${bill.items.length}',
+                    style: const pw.TextStyle(fontSize: 10),
+                  ),
+                  pw.Text(
+                    'Signature: _______________',
+                    style: const pw.TextStyle(fontSize: 10),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  Future<void> _downloadBillPDF(Bill bill) async {
+    try {
+      final fileName =
+          '${bill.billNumber}_${bill.date.day}_${bill.date.month}_${bill.date.year}.pdf';
+
+      final pdfBytes = await _generateBillPdfBytes(bill);
+      if (!mounted) return;
+
+      if (Platform.isWindows) {
+        // Save to Desktop on Windows
+        final desktopPath =
+            Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
+        final filePath = desktopPath.isNotEmpty
+            ? '$desktopPath\\Desktop\\$fileName'
+            : fileName;
+
+        final file = File(filePath);
+        await file.writeAsBytes(pdfBytes);
+
+        try {
+          await OpenFilex.open(file.path);
+        } catch (_) {
+          // Ignore: user can open the file manually from Desktop.
+        }
+
+        _showNotification('Downloaded: ${file.path}');
+      } else {
+        // For other platforms, share as "download"
+        await Printing.sharePdf(bytes: pdfBytes, filename: fileName);
+        _showNotification('PDF ready to download/share: $fileName');
+      }
+    } catch (e) {
+      if (mounted) {
+        _showNotification('Error downloading PDF: $e', isError: true);
       }
     }
   }
@@ -1968,12 +2272,26 @@ class _BillsPageState extends State<BillsPage> {
                       ),
                     ],
                   ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.print, color: Colors.blue),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _generateBillPDF(bill);
-                    },
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.download, color: Colors.green),
+                        tooltip: 'Download Bill',
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _downloadBillPDF(bill);
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.print, color: Colors.blue),
+                        tooltip: 'Print Bill',
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _generateBillPDF(bill);
+                        },
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -2058,9 +2376,11 @@ class _BillsPageState extends State<BillsPage> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
               // Search and Add Button Row
               Row(
                 children: [
@@ -2229,6 +2549,12 @@ class _BillsPageState extends State<BillsPage> {
                                     color: Colors.blue,
                                     onPressed: () => _generateBillPDF(bill),
                                     tooltip: 'Print Bill',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.download, size: 20),
+                                    color: Colors.green,
+                                    onPressed: () => _downloadBillPDF(bill),
+                                    tooltip: 'Download Bill',
                                   ),
                                   IconButton(
                                     icon: const Icon(Icons.delete, size: 20),
